@@ -2,7 +2,11 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class Movement : MonoBehaviour
+using Photon.Pun;
+using Photon.Realtime;
+using Cinemachine;
+
+public class Movement : MonoBehaviourPunCallbacks, IPunObservable
 {
     CharacterController controller;
     Transform _transform;
@@ -14,7 +18,13 @@ public class Movement : MonoBehaviour
     Vector3 hitPoint;
 
     public float moveSpped = 10f;
-    
+
+    PhotonView pv;
+    CinemachineVirtualCamera virtualCamera;
+
+    Vector3 receivePos;
+    Quaternion receiveRot;
+    public float damping = 10f;
 
     // Start is called before the first frame update
     void Start()
@@ -25,13 +35,30 @@ public class Movement : MonoBehaviour
         _camera = Camera.main; // 태그가 MainCamera인 카메라
 
         plane = new Plane(transform.up, transform.position);
+
+        pv = GetComponent<PhotonView>();
+        virtualCamera = GameObject.FindAnyObjectByType<CinemachineVirtualCamera>();
+
+        if(pv.IsMine)
+        {
+            virtualCamera.Follow = transform;
+            virtualCamera.LookAt = transform;
+        }
     }
 
     // Update is called once per frame
     void Update()
     {
-        Move();
-        Turn();
+        if (pv.IsMine)
+        {
+            Move();
+            Turn();
+        }
+        else
+        {
+            transform.position = Vector3.Lerp(transform.position, receivePos, Time.deltaTime * damping);
+            transform.rotation = Quaternion.Slerp(transform.rotation, receiveRot, Time.deltaTime * damping);
+        }
     }
 
     float h => Input.GetAxis("Horizontal");
@@ -67,4 +94,17 @@ public class Movement : MonoBehaviour
         transform.localRotation = Quaternion.LookRotation(lookDir);
     }
 
+    public void OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info)
+    {
+        if(stream.IsWriting)
+        {
+            stream.SendNext(transform.position);
+            stream.SendNext(transform.rotation);
+        }
+        else
+        {
+            receivePos = (Vector3)stream.ReceiveNext();
+            receiveRot = (Quaternion)stream.ReceiveNext();
+        }// 보낸 순서와 받는 순서 같아야함
+    }
 }
